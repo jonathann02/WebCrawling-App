@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CSV Webcrawler 2.0 – Professionell Kontaktextraktion</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+<div class="max-w-4xl mx-auto p-6">
+
+<!-- Header -->
+<div class="mb-6">
+  <h1 class="text-3xl font-bold mb-2">CSV Webcrawler 2.0</h1>
+  <p class="text-slate-600">Leadgenerering</p>
+</div>
+
+<!-- Info Box -->
+<div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded">
+  <h3 class="font-semibold text-sm mb-2">ℹ️ Tips för bästa resultat</h3>
+  <ul class="text-xs space-y-1 text-slate-700">
+    <li>• <strong>Samtidiga hämtningar:</strong> Håll låg (≤5) för att respektera servrar och undvika blockering.</li>
+    <li>• <strong>Max sidor per site:</strong> 5-7 sidor ger bra balans mellan datamängd och hastighet.</li>
+    <li>• <strong>CSV-format:</strong> Kolumner som "website", "url", eller "hemsida" identifieras automatiskt.</li>
+  </ul>
+</div>
+
+<!-- Upload Form -->
+<form id="form" class="space-y-4 bg-white rounded-2xl shadow-lg p-6 mb-6">
+  <div>
+    <label class="block text-sm font-medium mb-2">CSV-fil</label>
+    <input id="file" type="file" accept=".csv" class="block w-full border rounded-lg p-2 hover:border-blue-400 transition" required />
+    <p class="text-xs text-slate-500 mt-1">Stöds: Apify Google Maps-export med kolumner som "website", "title", "phone"</p>
+  </div>
+
+  <!-- CSV Preview -->
+  <div id="preview" class="hidden mt-4 bg-slate-50 rounded-lg p-4 border">
+    <h4 class="font-semibold text-sm mb-2">📋 Förhandsgranskning (5 första raderna)</h4>
+    <div id="previewTable" class="overflow-x-auto text-xs"></div>
+    <p id="previewStats" class="text-xs mt-2 text-slate-600"></p>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div>
+      <label class="flex items-center gap-1 text-sm font-medium mb-1">
+        Max sidor per site
+        <span class="cursor-help text-slate-400" title="Antal undersidor att crawla per webbplats. Högre = mer data men långsammare.">ℹ️</span>
+      </label>
+      <input id="maxPages" type="number" min="1" max="10" value="5" class="w-full border rounded-lg p-2" />
+    </div>
+    <div>
+      <label class="flex items-center gap-1 text-sm font-medium mb-1">
+        Samtidiga hämtningar
+        <span class="cursor-help text-slate-400" title="Max antal parallella requests. Håll låg (3-5) för att respektera servrar.">ℹ️</span>
+      </label>
+      <input id="concurrency" type="number" min="1" max="8" value="4" class="w-full border rounded-lg p-2" />
+    </div>
+  </div>
+  
+  <div>
+    <label class="block text-sm font-medium mb-1">Tags (Mailchimp, valfritt)</label>
+    <input id="tags" type="text" placeholder="t.ex. Stockholm, Redovisning" class="w-full border rounded-lg p-2" />
+  </div>
+  
+  <button type="submit" class="w-full px-4 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition" id="runBtn">
+    🚀 Starta crawling
+  </button>
+</form>
+
+<!-- Progress Section -->
+<div id="progressSection" class="hidden bg-white rounded-2xl shadow-lg p-6 mb-6">
+  <div class="flex items-center justify-between mb-4">
+    <h3 class="font-semibold text-lg">⚙️ Bearbetar...</h3>
+    <span id="progressPercentage" class="text-sm font-mono text-slate-600">0%</span>
+  </div>
+  
+  <div class="w-full bg-gray-200 rounded-full h-3 mb-4 overflow-hidden">
+    <div id="progressBar" class="bg-blue-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+  </div>
+  
+  <div class="grid grid-cols-3 gap-3 mb-4">
+    <div class="bg-slate-50 p-3 rounded-lg text-center">
+      <div class="text-2xl font-bold text-slate-800" id="statProcessed">0</div>
+      <div class="text-xs text-slate-600">Bearbetade</div>
+    </div>
+    <div class="bg-slate-50 p-3 rounded-lg text-center">
+      <div class="text-2xl font-bold text-slate-800" id="statTotal">0</div>
+      <div class="text-xs text-slate-600">Totalt</div>
+    </div>
+    <div class="bg-emerald-50 p-3 rounded-lg text-center">
+      <div class="text-2xl font-bold text-emerald-700" id="statFound">0</div>
+      <div class="text-xs text-slate-600">Kontakter</div>
+    </div>
+  </div>
+  
+  <p id="currentHost" class="text-xs text-slate-500 font-mono">Crawlar: —</p>
+  <p id="progressState" class="text-sm text-slate-700 mt-2"></p>
+</div>
+
+<!-- Status Messages -->
+<div id="status" class="hidden mb-6"></div>
+
+<!-- Results Section -->
+<div id="resultsSection" class="hidden">
+  <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+    <h2 class="text-xl font-bold mb-4">✅ Klart! Ladda ner resultat</h2>
+    
+    <div class="grid grid-cols-3 gap-3 mb-4">
+      <a id="dlEnriched" href="#" class="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
+        📊 Alla
+      </a>
+      <a id="dlHighQuality" href="#" class="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700 transition">
+        ⭐ Hög kvalitet
+      </a>
+      <a id="dlMailchimp" href="#" class="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition">
+        📧 Mailchimp
+      </a>
+    </div>
+    
+    <div id="statsBox" class="bg-slate-50 rounded-lg p-4 text-sm">
+      <h4 class="font-semibold mb-2">Statistik</h4>
+      <ul class="space-y-1 text-slate-700" id="statsList"></ul>
+    </div>
+  </div>
+  
+  <!-- Data Quality Table -->
+  <div class="bg-white rounded-2xl shadow-lg p-6">
+    <h3 class="font-semibold text-lg mb-4">🔍 Granska data</h3>
+    
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <button class="filter-btn px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium" data-filter="all">Alla</button>
+      <button class="filter-btn px-3 py-1.5 rounded-lg bg-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-300" data-filter="high">Hög kvalitet (≥80%)</button>
+      <button class="filter-btn px-3 py-1.5 rounded-lg bg-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-300" data-filter="medium">Medium (50-79%)</button>
+      <button class="filter-btn px-3 py-1.5 rounded-lg bg-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-300" data-filter="low">Låg (<50%)</button>
+    </div>
+    
+    <div class="overflow-x-auto">
+      <table id="resultsTable" class="w-full text-xs border-collapse">
+        <!-- Populated dynamically -->
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<p class="mt-8 text-xs text-center text-slate-500">
+  CSV Webcrawler 2.0 • Respekterar robots.txt • Rate-limited • GDPR-medveten • 
+  <a href="/metrics" target="_blank" class="underline">Metrics</a>
+</p>
+
+</div>
+
+<script type="module">
+const form = document.getElementById('form');
+const fileEl = document.getElementById('file');
+const maxPagesEl = document.getElementById('maxPages');
+const concEl = document.getElementById('concurrency');
+const tagsEl = document.getElementById('tags');
+const runBtn = document.getElementById('runBtn');
+const statusEl = document.getElementById('status');
+const previewEl = document.getElementById('preview');
+const progressSection = document.getElementById('progressSection');
+const resultsSection = document.getElementById('resultsSection');
+
+let currentJobId = null;
+let currentEventSource = null;
+
+// Update run button based on file selection
+function updateRunButton() {
+  const hasFile = fileEl.files.length > 0;
+  runBtn.disabled = !hasFile;
+  
+  if (!hasFile) {
+    runBtn.title = 'Välj en CSV-fil först';
+  } else {
+    runBtn.title = '';
+  }
+}
+
+fileEl.addEventListener('change', updateRunButton);
+updateRunButton();
+
+// CSV Preview
+fileEl.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) {
+    previewEl.classList.add('hidden');
+    return;
+  }
+  
+  try {
+    const text = await file.text();
+    const lines = text.split('\n').slice(0, 6).filter(l => l.trim());
+    
+    // Skip preview if less than 2 lines, but don't show error (file might still be valid)
+    if (lines.length < 2) {
+      previewEl.classList.add('hidden');
+      return;
+    }
+    
+    const rows = lines.map(l => l.split(',').map(c => c.replace(/^"|"$/g, '').trim()));
+    
+    const table = `
+      <table class="border w-full">
+        <thead>
+          <tr class="bg-slate-100">
+            ${rows[0].map(h => `<th class="border p-2 text-left font-semibold">${h}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.slice(1).map(r => `
+            <tr class="hover:bg-slate-50">
+              ${r.map(c => `<td class="border p-2">${c}</td>`).join('')}
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    
+    document.getElementById('previewTable').innerHTML = table;
+    document.getElementById('previewStats').textContent = 
+      `Visar ${lines.length - 1} rader. Total storlek: ${(file.size / 1024).toFixed(1)} KB`;
+    previewEl.classList.remove('hidden');
+    
+  } catch (err) {
+    showError('Kunde inte förhandsgranska CSV: ' + err.message);
+  }
+});
+
+// Submit form
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  if (!fileEl.files[0]) return;
+  
+  runBtn.disabled = true;
+  statusEl.classList.add('hidden');
+  progressSection.classList.add('hidden');
+  resultsSection.classList.add('hidden');
+  
+  const fd = new FormData();
+  fd.append('file', fileEl.files[0]);
+  fd.append('maxPagesPerSite', maxPagesEl.value);
+  fd.append('concurrency', concEl.value);
+  fd.append('tags', tagsEl.value);
+  
+  try {
+    const r = await fetch('/api/enrich', { method: 'POST', body: fd });
+    const data = await r.json();
+    
+    if (!r.ok) {
+      throw new Error(data.error || 'Kunde inte skapa jobb');
+    }
+    
+    currentJobId = data.jobId;
+    
+    // Show progress
+    progressSection.classList.remove('hidden');
+    startProgressMonitoring(data.jobId);
+    
+  } catch (err) {
+    showError(err.message);
+    runBtn.disabled = false;
+  }
+});
+
+// Progress monitoring via SSE
+function startProgressMonitoring(jobId) {
+  if (currentEventSource) {
+    currentEventSource.close();
+  }
+  
+  currentEventSource = new EventSource(`/api/jobs/${jobId}/progress`);
+  
+  currentEventSource.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    
+    // Update progress bar
+    const percentage = Math.round(data.progress);
+    document.getElementById('progressBar').style.width = percentage + '%';
+    document.getElementById('progressPercentage').textContent = percentage + '%';
+    
+    // Update stats
+    document.getElementById('statProcessed').textContent = data.stats.processed;
+    document.getElementById('statTotal').textContent = data.stats.total;
+    document.getElementById('statFound').textContent = data.stats.found;
+    
+    // Update current host
+    document.getElementById('currentHost').textContent = 
+      data.current ? `Crawlar: ${data.current}` : 'Väntar...';
+    
+    document.getElementById('progressState').textContent = `Status: ${data.state}`;
+    
+    // Check if completed
+    if (data.state === 'completed') {
+      currentEventSource.close();
+      loadResults(jobId);
+    } else if (data.state === 'failed') {
+      currentEventSource.close();
+      showError('Jobbet misslyckades. Kontrollera loggarna.');
+      runBtn.disabled = false;
+    }
+  };
+  
+  currentEventSource.onerror = () => {
+    currentEventSource.close();
+    showError('Anslutningen till servern förlorades.');
+    runBtn.disabled = false;
+  };
+}
+
+// Load results
+async function loadResults(jobId) {
+  try {
+    const r = await fetch(`/api/jobs/${jobId}`);
+    const data = await r.json();
+    
+    if (!data.result) {
+      throw new Error('Inga resultat tillgängliga');
+    }
+    
+    const { records, stats } = data.result;
+    
+    // Hide progress, show results
+    progressSection.classList.add('hidden');
+    resultsSection.classList.remove('hidden');
+    
+    // Setup downloads
+    document.getElementById('dlEnriched').href = `/api/jobs/${jobId}/export?format=enriched`;
+    document.getElementById('dlHighQuality').href = `/api/jobs/${jobId}/export?format=highquality`;
+    document.getElementById('dlMailchimp').href = `/api/jobs/${jobId}/export?format=mailchimp`;
+    
+    // Show stats
+    const statsList = document.getElementById('statsList');
+    statsList.innerHTML = `
+      <li>📊 <strong>Totalt webbplatser:</strong> ${stats.totalSites}</li>
+      <li>📧 <strong>Kontakter hittade:</strong> ${stats.totalRecords}</li>
+      <li>⚠️ <strong>Fel:</strong> ${stats.totalErrors}</li>
+      <li>📈 <strong>Snitt per sajt:</strong> ${stats.avgRecordsPerSite.toFixed(1)}</li>
+    `;
+    
+    // Render table
+    renderTable(records, 'all');
+    
+    // Filter buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => {
+          b.classList.remove('bg-blue-600', 'text-white');
+          b.classList.add('bg-slate-200', 'text-slate-700');
+        });
+        btn.classList.add('bg-blue-600', 'text-white');
+        btn.classList.remove('bg-slate-200', 'text-slate-700');
+        
+        renderTable(records, btn.dataset.filter);
+      });
+    });
+    
+    runBtn.disabled = false;
+    
+  } catch (err) {
+    showError('Kunde inte ladda resultat: ' + err.message);
+    runBtn.disabled = false;
+  }
+}
+
+// Render data table
+function renderTable(records, filter = 'all') {
+  let filtered = records;
+  
+  if (filter === 'high') {
+    filtered = records.filter(r => r.confidence >= 0.8);
+  } else if (filter === 'medium') {
+    filtered = records.filter(r => r.confidence >= 0.5 && r.confidence < 0.8);
+  } else if (filter === 'low') {
+    filtered = records.filter(r => r.confidence < 0.5);
+  }
+  
+  const html = `
+    <thead>
+      <tr class="bg-slate-100">
+        <th class="border p-2 text-left">E-post</th>
+        <th class="border p-2 text-left">Typ</th>
+        <th class="border p-2 text-left">Kvalitet</th>
+        <th class="border p-2 text-left">Domän</th>
+        <th class="border p-2 text-left">Källa</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${filtered.length === 0 ? '<tr><td colspan="5" class="border p-4 text-center text-slate-500">Inga resultat matchar filtret</td></tr>' : ''}
+      ${filtered.map(r => {
+        const confPercent = Math.round(r.confidence * 100);
+        const confColor = confPercent >= 80 ? 'bg-green-500' : confPercent >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+        const typeColor = r.emailType === 'role' ? 'bg-green-100 text-green-800' : 
+                         r.emailType === 'personal' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800';
+        
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="border p-2 font-mono text-xs">${r.email}</td>
+            <td class="border p-2">
+              <span class="px-2 py-0.5 rounded text-xs font-medium ${typeColor}">${r.emailType}</span>
+            </td>
+            <td class="border p-2">
+              <div class="flex items-center gap-2">
+                <div class="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div class="h-full ${confColor}" style="width: ${confPercent}%"></div>
+                </div>
+                <span class="text-xs font-mono">${confPercent}%</span>
+              </div>
+            </td>
+            <td class="border p-2 text-xs">${r.domain}</td>
+            <td class="border p-2 text-xs text-slate-600">${r.discoveryPath}</td>
+          </tr>
+        `;
+      }).join('')}
+    </tbody>
+  `;
+  
+  document.getElementById('resultsTable').innerHTML = html;
+}
+
+// Show error
+function showError(message) {
+  statusEl.innerHTML = `
+    <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+      <h4 class="font-semibold text-red-800">❌ Fel</h4>
+      <p class="text-sm text-red-700 mt-1">${message}</p>
+    </div>
+  `;
+  statusEl.classList.remove('hidden');
+}
+</script>
+</body>
+</html>
